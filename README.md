@@ -205,11 +205,13 @@ HMCL.exe
 仓库根目录提供了脚本，双击即可，不需要改任何系统设置：
 
 ```bat
-set "HMCL_EXE=%~dp0HMCL.exe"            rem HMCL.exe 路径
-set "AGENT_JAR=%~dp0RegionPatch.jar"    rem Agent 路径
-set "JAVA_HEAP=-Xmx2G"                  rem 堆参数（会替换启动器默认值）
-set "DUMP_DIR="                         rem 可选：设为目录可 dump 改写后的 class
+set "HMCL_EXE=%~dp0HMCL.exe"
+set "AGENT_JAR=%~dp0RegionPatch.jar"
+set "JAVA_HEAP=-Xmx2G"
+set "DUMP_DIR="
 ```
+
+脚本会校验文件是否存在，打印实际使用的 `HMCL_JAVA_OPTS`，然后启动 HMCL；路径含空格也没问题。
 
 用法：
 
