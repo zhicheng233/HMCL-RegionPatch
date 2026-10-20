@@ -103,6 +103,10 @@ val smokeTest by tasks.registering {
     val preloadJar = preloadAgentJar.flatMap { it.archiveFile }
     val dumpDir = layout.buildDirectory.dir("smoke/dump")
     val runClasspath = files(fixtureSourceSet.output, harnessSourceSet.output)
+    // Resolved at configuration time on purpose: touching a SourceSet from inside
+    // doLast would capture the build script instance and break the configuration
+    // cache (Gradle rejects "Gradle script object references").
+    val harnessOnlyClasspath = harnessSourceSet.output.files.toList()
 
     doLast {
         val jar = agentJar.get().asFile
@@ -173,7 +177,7 @@ val smokeTest by tasks.registering {
             // RegionUtils at all): the agent must say so instead of claiming success.
             // The fixture is deliberately left off this class path.
             "target-absent" to runWithClasspath(
-                harnessSourceSet.output.files.joinToString(File.pathSeparator),
+                harnessOnlyClasspath.joinToString(File.pathSeparator),
                 "regionpatch.harness.NoTargetMain",
                 "-javaagent:${jar.absolutePath}",
             ),
