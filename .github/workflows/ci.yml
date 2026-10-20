@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (JDK 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # `build` depends on `shadowJar` and `smokeTest`, so this compiles the
+      # agent, packs it and runs the four isolated-JVM behaviour tests.
+      - name: Build and run smoke tests
+        run: bash ./gradlew build --no-daemon --stacktrace
+
+      - name: Show agent manifest
+        run: unzip -p build/libs/RegionPatch.jar META-INF/MANIFEST.MF
+
+      - name: Upload agent JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: RegionPatch-jar
+          path: build/libs/RegionPatch.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout (full history and tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download agent JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: RegionPatch-jar
+          path: dist
+
+      # Release notes are the commits between the previous tag and this tag.
+      - name: Build changelog since the previous tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          previous="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          if [ -n "$previous" ]; then
+            range="${previous}..HEAD"
+            compare="https://github.com/${GITHUB_REPOSITORY}/compare/${previous}...${TAG}"
+            echo "previous tag: ${previous}"
+          else
+            range="HEAD"
+            compare=""
+            echo "no previous tag, listing the whole history"
+          fi
+
+          {
+            echo "## 变更记录"
+            echo
+            echo "自 \`${previous:-仓库首个提交}\` 以来的提交："
+            echo
+            git log "$range" --no-merges --pretty=format:'- %s (%h) — @%an'
+            echo
+            echo
+            if [ -n "$compare" ]; then
+              echo "**完整对比**：${compare}"
+              echo
+            fi
+            echo "## 产物"
+            echo
+            echo "- \`RegionPatch.jar\`：Java Agent，通过 \`-javaagent\` 挂载到 HMCL"
+          } > CHANGELOG.md
+
+          cat CHANGELOG.md
+          cat CHANGELOG.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Idempotent: re-running the workflow for the same tag updates the release
+      # instead of failing.
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          prerelease=""
+          case "$TAG" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file CHANGELOG.md
+            gh release upload "$TAG" dist/RegionPatch.jar --clobber
+          else
+            gh release create "$TAG" dist/RegionPatch.jar \
+              --title "$TAG" \
+              --notes-file CHANGELOG.md \
+              --verify-tag \
+              $prerelease
+          fi
