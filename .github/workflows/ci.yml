@@ -43,11 +43,31 @@ jobs:
       - name: Show agent manifest
         run: unzip -p build/libs/RegionPatch.jar META-INF/MANIFEST.MF
 
-      - name: Upload agent JAR
+      # cmd.exe mis-parses a launcher with LF endings, so the released .bat must
+      # keep CRLF. .gitattributes enforces it on checkout; this asserts it.
+      - name: Verify launcher line endings
+        run: |
+          cr=$(tr -cd '\r' < start-hmcl-with-patch.bat | wc -c)
+          if [ "$cr" -gt 0 ]; then
+            echo "start-hmcl-with-patch.bat uses CRLF ($cr CR bytes)"
+          else
+            echo "::error::start-hmcl-with-patch.bat must use CRLF line endings"
+            exit 1
+          fi
+
+      # The artifact is exactly what a release ships: the agent JAR plus the
+      # launcher, which resolves RegionPatch.jar next to itself (%~dp0).
+      - name: Collect release files
+        run: |
+          mkdir -p dist
+          cp build/libs/RegionPatch.jar dist/
+          cp start-hmcl-with-patch.bat dist/
+
+      - name: Upload agent JAR and launcher
         uses: actions/upload-artifact@v4
         with:
-          name: RegionPatch-jar
-          path: build/libs/RegionPatch.jar
+          name: RegionPatch
+          path: dist/
           if-no-files-found: error
           retention-days: 14
 
@@ -65,10 +85,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download agent JAR
+      - name: Download release files
         uses: actions/download-artifact@v4
         with:
-          name: RegionPatch-jar
+          name: RegionPatch
           path: dist
 
       # Release notes are the commits between the previous tag and this tag.
@@ -104,6 +124,9 @@ jobs:
             echo "## 产物"
             echo
             echo "- \`RegionPatch.jar\`：Java Agent，通过 \`-javaagent\` 挂载到 HMCL"
+            echo "- \`start-hmcl-with-patch.bat\`：Windows 启动脚本，与 \`HMCL.exe\`、\`RegionPatch.jar\` 放在同一目录后双击运行"
+            echo
+            echo "用法：把两个文件放到 HMCL 所在目录（与 \`HMCL.exe\` 同级），双击 \`.bat\`。"
           } > CHANGELOG.md
 
           cat CHANGELOG.md
@@ -125,9 +148,9 @@ jobs:
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "$TAG" --notes-file CHANGELOG.md
-            gh release upload "$TAG" dist/RegionPatch.jar --clobber
+            gh release upload "$TAG" dist/RegionPatch.jar dist/start-hmcl-with-patch.bat --clobber
           else
-            gh release create "$TAG" dist/RegionPatch.jar \
+            gh release create "$TAG" dist/RegionPatch.jar dist/start-hmcl-with-patch.bat \
               --title "$TAG" \
               --notes-file CHANGELOG.md \
               --verify-tag \
