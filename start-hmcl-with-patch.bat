@@ -16,6 +16,7 @@ rem         then double-click it. Adjust the paths below if needed.
 rem ============================================================
 
 rem ---- edit if needed -----------------------------------------
+set "SCRIPT_VERSION=2"
 set "HMCL_EXE=%~dp0HMCL.exe"
 set "AGENT_JAR=%~dp0RegionPatch.jar"
 
@@ -54,6 +55,7 @@ if not exist "%AGENT_JAR%" (
 set "HMCL_JAVA_OPTS=%JAVA_HEAP% %JAVA_ENCODING% -javaagent:"%AGENT_JAR%""
 if defined DUMP_DIR set "HMCL_JAVA_OPTS=%HMCL_JAVA_OPTS% -Dregionpatch.dumpDir="%DUMP_DIR%""
 
+echo RegionPatch script v%SCRIPT_VERSION%
 echo HMCL_EXE       = %HMCL_EXE%
 echo AGENT_JAR      = %AGENT_JAR%
 echo HMCL_JAVA_OPTS = %HMCL_JAVA_OPTS%
