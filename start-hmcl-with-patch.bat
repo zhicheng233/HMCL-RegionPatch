@@ -1,4 +1,7 @@
 @echo off
+rem Switch this console to UTF-8 so Chinese/Unicode output is readable.
+rem Must stay before any non-ASCII text; this file is ASCII on purpose.
+chcp 65001 >nul
 setlocal EnableExtensions
 
 rem ============================================================
@@ -18,6 +21,12 @@ set "AGENT_JAR=%~dp0RegionPatch.jar"
 
 rem HMCL_JAVA_OPTS REPLACES the launcher defaults, so set the heap here.
 set "JAVA_HEAP=-Xmx2G"
+
+rem Make the JVM write UTF-8 as well, matching "chcp 65001" above.
+rem Without this, JDK 17 on a Chinese system writes GBK into a UTF-8
+rem console and the output is garbled. Clear this line if you prefer
+rem the JVM's default encoding.
+set "JAVA_ENCODING=-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8"
 
 rem Optional: dump the rewritten RegionUtils.class for javap checks.
 rem Leave empty to disable.
@@ -42,7 +51,7 @@ if not exist "%AGENT_JAR%" (
     exit /b 1
 )
 
-set "HMCL_JAVA_OPTS=%JAVA_HEAP% -javaagent:"%AGENT_JAR%""
+set "HMCL_JAVA_OPTS=%JAVA_HEAP% %JAVA_ENCODING% -javaagent:"%AGENT_JAR%""
 if defined DUMP_DIR set "HMCL_JAVA_OPTS=%HMCL_JAVA_OPTS% -Dregionpatch.dumpDir="%DUMP_DIR%""
 
 echo HMCL_EXE       = %HMCL_EXE%

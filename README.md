@@ -193,12 +193,18 @@ Agent 会区分“初始化完成”和“真的改写了”：
 `cmd` 的 `set` 只影响**当前窗口及其子进程**，关掉窗口就失效；`setx` 才会永久写入用户环境变量。
 
 ```bat
-set "HMCL_JAVA_OPTS=-Xmx2G -javaagent:"C:\Tools\RegionPatch\RegionPatch.jar""
+chcp 65001
+set "HMCL_JAVA_OPTS=-Xmx2G -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -javaagent:"C:\Tools\RegionPatch\RegionPatch.jar""
 HMCL.exe
 ```
 
 注意整行要用 `set "变量=值"` 的写法，这样值里的引号才会被原样保留
 （路径含空格时必须这样写）。
+
+关于编码：`chcp 65001` 只改变控制台，JDK 17 在中文系统上默认仍按 GBK 写
+stdout，两者不一致就会出现“涓枃”这类乱码。所以还要把
+`-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8`
+一起传给 JVM（JDK 18+ 默认就是 UTF-8，加了也无副作用）。
 
 ### 5.3 一键启动脚本 `start-hmcl-with-patch.bat`
 
@@ -208,8 +214,12 @@ HMCL.exe
 set "HMCL_EXE=%~dp0HMCL.exe"
 set "AGENT_JAR=%~dp0RegionPatch.jar"
 set "JAVA_HEAP=-Xmx2G"
+set "JAVA_ENCODING=-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8"
 set "DUMP_DIR="
 ```
+
+脚本开头会执行 `chcp 65001` 把窗口切到 UTF-8，并把 `JAVA_ENCODING` 传给 JVM，
+避免中文日志在 UTF-8 终端里变成乱码（不需要时把 `JAVA_ENCODING` 清空即可）。
 
 脚本会校验文件是否存在，打印实际使用的 `HMCL_JAVA_OPTS`，然后启动 HMCL；路径含空格也没问题。
 
