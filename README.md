@@ -8,6 +8,7 @@ HMCL 于2026.10.21日正式合并相关功能到主线，该项目用于绕过�
 - 仅供学习参考，请于24h内删除，本项目于HMCL没有任何附属关系。
 
 > 适用版本：**HMCL 3.17+（nightly / main）**
+> [PCL2版本 - PCL2 RegionPatch](https://github.com/zhicheng233/PCL2-RegionPatch)
 
 ---
 
