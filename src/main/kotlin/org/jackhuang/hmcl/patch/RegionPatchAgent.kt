@@ -10,6 +10,7 @@ import net.bytebuddy.utility.JavaModule
 import java.io.File
 import java.lang.instrument.Instrumentation
 import java.security.ProtectionDomain
+import javax.swing.JOptionPane
 
 /**
  * Java agent that replaces the body of
@@ -173,6 +174,7 @@ object RegionPatchAgent {
                                 problems.joinToString("; ")
                     )
                     System.setProperty("regionpatch.agent.status", "TARGET_SIGNATURE_MISMATCH")
+                    JOptionPane.showMessageDialog(null, "Failed to patch $targetMethod().", "Patch Error!",JOptionPane.ERROR_MESSAGE)
                     continue
                 }
                 
