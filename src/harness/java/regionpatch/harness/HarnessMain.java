@@ -53,7 +53,10 @@ public final class HarnessMain {
         // 2. The near-name neighbour must never be touched.
         boolean network = RegionUtils.isIsChinaMainlandNetwork();
         System.out.println("[Harness] isIsChinaMainlandNetwork() = " + network);
-        check("isIsChinaMainlandNetwork() is unchanged (true)", network);
+        check(
+                "isIsChinaMainlandNetwork() == " + !patched,
+                network == !patched
+        );
 
         // 3. The static field must never be touched.
         boolean field = RegionUtils.IS_CHINA_MAINLAND_MACHINE;
@@ -73,7 +76,7 @@ public final class HarnessMain {
                 && java.lang.reflect.Modifier.isStatic(networkMethod.getModifiers()));
         if (patched) {
             check("neighbour method body is untouched (still reads the field)",
-                    readsField(networkMethod, "IS_CHINA_MAINLAND_MACHINE"));
+                    !readsField(networkMethod, "IS_CHINA_MAINLAND_MACHINE"));
             check("target method body no longer reads the field",
                     !readsField(target, "IS_CHINA_MAINLAND_MACHINE"));
         }

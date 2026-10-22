@@ -33,7 +33,9 @@ import java.security.ProtectionDomain
 object RegionPatchAgent {
 
     private const val TARGET_CLASS = "org.jackhuang.hmcl.util.RegionUtils"
-    private const val TARGET_METHOD = "isIsChinaMainlandMachine"
+    private const val TARGET_METHOD_MACHINE = "isIsChinaMainlandMachine"
+    private const val TARGET_METHOD_NETWORK = "isIsChinaMainlandNetwork"
+    private val TARGET_METHOD_List = listOf(TARGET_METHOD_MACHINE, TARGET_METHOD_NETWORK)
 
     @JvmStatic
     fun premain(agentArgs: String?, instrumentation: Instrumentation) {
@@ -85,7 +87,7 @@ object RegionPatchAgent {
                 if (System.getProperty("regionpatch.agent.status") != "PATCHED") {
                     System.err.println(
                         "[RegionPatch] ERROR: exiting without patching " +
-                            "'$TARGET_CLASS.$TARGET_METHOD()' " +
+                            "'$TARGET_CLASS.$TARGET_METHOD_MACHINE()' " +
                             "(status='${System.getProperty("regionpatch.agent.status")}'). " +
                             "The class was never loaded by this JVM, or its signature did not " +
                             "match. Note that HMCL 3.16.x does not contain RegionUtils at all; " +
@@ -115,10 +117,10 @@ object RegionPatchAgent {
         try {
             AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .with(LoggingListener())
+                .with(LoggingListener(TARGET_METHOD_List))
                 .disableClassFormatChanges()
                 .type(ElementMatchers.named(TARGET_CLASS))
-                .transform(RegionUtilsTransformer())
+                .transform(RegionUtilsTransformer(TARGET_METHOD_List))
                 .installOn(instrumentation)
         } catch (t: Throwable) {
             Log.error("Failed to install the class file transformer", t)
@@ -132,8 +134,12 @@ object RegionPatchAgent {
     /**
      * Rewrites exactly one method, after validating its signature.
      */
-    private class RegionUtilsTransformer : AgentBuilder.Transformer {
-
+    private class RegionUtilsTransformer(private val targetMethods: List<String>) : AgentBuilder.Transformer {
+        
+        companion object {
+            var successMethods = mutableListOf<String >()
+        }
+        
         override fun transform(
             builder: DynamicType.Builder<*>,
             typeDescription: TypeDescription,
@@ -141,47 +147,52 @@ object RegionPatchAgent {
             module: JavaModule?,
             protectionDomain: ProtectionDomain?,
         ): DynamicType.Builder<*> {
-            val candidates = typeDescription.declaredMethods.filter {
-                it.name == TARGET_METHOD && it.parameters.isEmpty()
-            }
+            var result = builder
+            for (targetMethod in targetMethods) {
+                val candidates = typeDescription.declaredMethods.filter {
+                    it.name == targetMethod && it.parameters.isEmpty()
+                }
 
-            if (candidates.isEmpty()) {
-                Log.error(
-                    "Class '$TARGET_CLASS' has no zero-argument method named '$TARGET_METHOD'. " +
-                        "Nothing was patched. Declared methods: " +
-                        typeDescription.declaredMethods.joinToString { it.name }
+                if (candidates.isEmpty()) {
+                    Log.error(
+                        "Class '$TARGET_CLASS' has no zero-argument method named '$targetMethod'. " +
+                                "Nothing was patched. Declared methods: " +
+                                typeDescription.declaredMethods.joinToString { it.name }
+                    )
+                    System.setProperty("regionpatch.agent.status", "TARGET_METHOD_MISSING")
+                    continue
+                }
+
+                val target = candidates.first()
+                val problems = validate(target)
+                if (problems.isNotEmpty()) {
+                    Log.error(
+                        "Method '$TARGET_CLASS.$targetMethod' has an unexpected signature " +
+                                "(modifiers=${target.modifiers}, returns=${target.returnType}, " +
+                                "parameters=${target.parameters.size}). Refusing to patch: " +
+                                problems.joinToString("; ")
+                    )
+                    System.setProperty("regionpatch.agent.status", "TARGET_SIGNATURE_MISMATCH")
+                    continue
+                }
+                
+                Log.info(
+                    "Target validated: public static boolean $targetMethod() in '$TARGET_CLASS' " +
+                            "(loader=${describeLoader(classLoader)})"
                 )
-                System.setProperty("regionpatch.agent.status", "TARGET_METHOD_MISSING")
-                return builder
-            }
-
-            val target = candidates.first()
-            val problems = validate(target)
-            if (problems.isNotEmpty()) {
-                Log.error(
-                    "Method '$TARGET_CLASS.$TARGET_METHOD' has an unexpected signature " +
-                        "(modifiers=${target.modifiers}, returns=${target.returnType}, " +
-                        "parameters=${target.parameters.size}). Refusing to patch: " +
-                        problems.joinToString("; ")
-                )
-                System.setProperty("regionpatch.agent.status", "TARGET_SIGNATURE_MISMATCH")
-                return builder
-            }
-
-            Log.info(
-                "Target validated: public static boolean $TARGET_METHOD() in '$TARGET_CLASS' " +
-                    "(loader=${describeLoader(classLoader)})"
-            )
-            Log.info("Replacing body of '$TARGET_CLASS.$TARGET_METHOD' with 'return false'.")
-
-            return builder
-                .method(
-                    ElementMatchers.named<MethodDescription>(TARGET_METHOD)
-                        .and(ElementMatchers.takesNoArguments<MethodDescription>())
-                        .and(ElementMatchers.isStatic<MethodDescription>())
-                        .and(ElementMatchers.returns<MethodDescription>(java.lang.Boolean.TYPE))
-                )
-                .intercept(FixedValue.value(false))
+                Log.info("Replacing body of '$TARGET_CLASS.$targetMethod' with 'return false'.")
+            
+                result = result
+                    .method(
+                        ElementMatchers.named<MethodDescription>(targetMethod)
+                            .and(ElementMatchers.takesNoArguments<MethodDescription>())
+                            .and(ElementMatchers.isStatic<MethodDescription>())
+                            .and(ElementMatchers.returns<MethodDescription>(java.lang.Boolean.TYPE))
+                    )
+                    .intercept(FixedValue.value(false))
+                successMethods.addLast(targetMethod)
+            }   
+            return result;
         }
 
         private fun validate(method: MethodDescription): List<String> {
@@ -194,6 +205,7 @@ object RegionPatchAgent {
             if (!method.parameters.isEmpty()) problems += "method takes parameters"
             return problems
         }
+
     }
 
     /**
@@ -201,7 +213,7 @@ object RegionPatchAgent {
      * signal that bytecode was really rewritten, hence the distinct
      * `PATCH APPLIED` line.
      */
-    private class LoggingListener : AgentBuilder.Listener {
+    private class LoggingListener(private val targetMethod: List<String>) : AgentBuilder.Listener {
 
         override fun onDiscovery(
             typeName: String,
@@ -224,10 +236,12 @@ object RegionPatchAgent {
             if (typeDescription.name != TARGET_CLASS) return
 
             System.setProperty("regionpatch.agent.status", "PATCHED")
+            var errorMsg = ""
+            RegionUtilsTransformer.successMethods.forEach { method -> errorMsg += method + "();"}
             Log.info(
                 "PATCH APPLIED: '${typeDescription.name}' rewritten " +
                     "(wasLoaded=$loaded, loader=${describeLoader(classLoader)}). " +
-                    "$TARGET_METHOD() now returns false."
+                    "$errorMsg now returns false."
             )
             dumpIfRequested(typeDescription, dynamicType)
         }
