@@ -192,7 +192,7 @@ object RegionPatchAgent {
                             .and(ElementMatchers.returns<MethodDescription>(java.lang.Boolean.TYPE))
                     )
                     .intercept(FixedValue.value(false))
-                successMethods.addLast(targetMethod)
+                successMethods.add(targetMethod)
             }   
             return result
         }
