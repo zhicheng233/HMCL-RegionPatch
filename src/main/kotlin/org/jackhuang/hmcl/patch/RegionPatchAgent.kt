@@ -118,7 +118,7 @@ object RegionPatchAgent {
         try {
             AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .with(LoggingListener(TARGET_METHOD_List))
+                .with(LoggingListener())
                 .disableClassFormatChanges()
                 .type(ElementMatchers.named(TARGET_CLASS))
                 .transform(RegionUtilsTransformer(TARGET_METHOD_List))
@@ -194,7 +194,7 @@ object RegionPatchAgent {
                     .intercept(FixedValue.value(false))
                 successMethods.addLast(targetMethod)
             }   
-            return result;
+            return result
         }
 
         private fun validate(method: MethodDescription): List<String> {
@@ -215,7 +215,7 @@ object RegionPatchAgent {
      * signal that bytecode was really rewritten, hence the distinct
      * `PATCH APPLIED` line.
      */
-    private class LoggingListener(private val targetMethod: List<String>) : AgentBuilder.Listener {
+    private class LoggingListener() : AgentBuilder.Listener {
 
         override fun onDiscovery(
             typeName: String,
